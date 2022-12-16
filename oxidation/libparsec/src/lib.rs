@@ -32,4 +32,4 @@ pub fn hello_world(subject: &str) -> Result<String, HelloError> {
         }),
         _ => Ok(format!("Hellow {subject}")),
     }
-}
+} // Dummy comment
