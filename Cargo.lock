@@ -1583,6 +1583,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "libparsec_serialization_format"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "itertools",
+ "libparsec_types",
+ "miniserde",
+ "pretty_assertions",
+ "proc-macro2",
+ "quote",
+ "rmp-serde",
+ "rstest",
+ "serde",
+ "serde_with",
+ "syn",
+]
+
+[[package]]
 name = "libparsec_types"
 version = "0.0.0"
 dependencies = [
