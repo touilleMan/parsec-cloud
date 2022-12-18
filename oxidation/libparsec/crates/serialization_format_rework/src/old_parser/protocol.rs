@@ -460,11 +460,14 @@ impl GenCmd {
                 }
             }
 
-            GenCmdSpec::Original { req, reps, .. } => {
+            GenCmdSpec::Original {
+                req,
+                reps,
+                nested_types,
+            } => {
                 let struct_req = quote_cmd_req_struct(req);
                 let variants_rep = quote_cmd_rep_variants(reps);
-                // TODO: support nested types !
-                // let nested_types = quote_cmd_nested_types();
+                let nested_types = quote_cmd_nested_types(nested_types);
                 let known_rep_statuses: Vec<String> =
                     reps.iter().map(|rep| rep.status.to_owned()).collect();
 
@@ -473,8 +476,7 @@ impl GenCmd {
                     pub mod #module_name {
                         use super::AnyCmdReq;
 
-                        // TODO
-                        // #(#nested_types)*
+                        #(#nested_types)*
 
                         #struct_req
 
@@ -528,6 +530,51 @@ impl GenCmd {
             }
         }
     }
+}
+
+fn quote_custom_enum(name: &str, variants: &[GenCmdNestedTypeVariant]) -> TokenStream {
+    let name = format_ident!("{}", name);
+    let variants: Vec<TokenStream> = variants
+        .iter()
+        .map(|variant| {
+            let variant_name = format_ident!("{}", variant.name);
+            let variant_fields = quote_cmd_fields(variant.fields.as_ref(), false);
+            quote! {
+                #variant_name {
+                    #(#variant_fields),*
+                }
+            }
+        })
+        .collect();
+    quote! {
+        #[::serde_with::serde_as]
+        #[derive(Debug, Clone, ::serde::Deserialize, ::serde::Serialize, PartialEq, Eq)]
+        pub enum #name {
+            #(#variants),*
+        }
+    }
+}
+
+fn quote_custom_struct(name: &str, fields: &[GenCmdField]) -> TokenStream {
+    let name = format_ident!("{}", name);
+    let fields = quote_cmd_fields(fields, true);
+    quote! {
+        #[::serde_with::serde_as]
+        #[derive(Debug, Clone, ::serde::Deserialize, ::serde::Serialize, PartialEq, Eq)]
+        pub struct #name {
+            #(#fields),*
+        }
+    }
+}
+
+fn quote_cmd_nested_types(nested_types: &[GenCmdNestedType]) -> Vec<TokenStream> {
+    nested_types
+        .iter()
+        .map(|nested_type| match nested_type {
+            GenCmdNestedType::Enum { name, variants } => quote_custom_enum(name, variants.as_ref()),
+            GenCmdNestedType::Struct { name, fields } => quote_custom_struct(name, fields.as_ref()),
+        })
+        .collect()
 }
 
 fn quote_cmd_req_struct(req: &GenCmdReq) -> TokenStream {

@@ -264,7 +264,7 @@ fn test_introduce_in_field() {
 }
 
 #[test]
-fn test_unit() {
+fn test_nested_type() {
     generate_protocol_familly_from_contents!(
         r#"[
     {
@@ -323,7 +323,7 @@ fn test_unit() {
     };
     let dumped = req.clone().dump().unwrap();
     assert_eq!(
-        protocol::v1::AnyCmdReq::load(dumped).unwrap(),
+        protocol::v1::AnyCmdReq::load(&dumped).unwrap(),
         protocol::v1::AnyCmdReq::Ping(req)
     );
 }
