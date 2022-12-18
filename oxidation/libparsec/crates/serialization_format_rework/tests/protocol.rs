@@ -263,62 +263,67 @@ fn test_introduce_in_field() {
     assert_eq!(protocol::v3::ping2::Rep::load(&v2_with_dumped).unwrap(), v3);
 }
 
-// #[test]
-// fn test_unit() {
-//     generate_protocol_familly_from_contents!(
-//         r#"[
-//     {
-//         "major_versions": [1],
-//         "req": {
-//             "cmd": "ping",
-//             "unit": "Foo",
-//             "other_fields": []
-//         },
-//         "reps": [],
-//         "":
-//     }
-// ]
-// "#
-//     );
+#[test]
+fn test_unit() {
+    generate_protocol_familly_from_contents!(
+        r#"[
+    {
+        "major_versions": [1],
+        "req": {
+            "cmd": "ping",
+            "other_fields": [
+                {"name": "e", "type": "EnumNestedType"},
+                {"name": "s", "type": "StructNestedType"}
+            ]
+        },
+        "reps": [],
+        "nested_types": [
+            {
+                "name": "EnumNestedType",
+                "type": "enum",
+                "variants": [
+                    {
+                        "name": "E1",
+                        "discriminant_value": "e1",
+                        "fields": [
+                            {
+                                "name": "f",
+                                "type": "Integer"
+                            }
+                        ]
+                    },
+                    {
+                        "name": "E2",
+                        "discriminant_value": "e2",
+                        "fields": []
+                    }
+                ]
+            },
+            {
+                "name": "StructNestedType",
+                "type": "struct",
+                "fields": [
+                    {
+                        "name": "f",
+                        "type": "Integer"
+                    }
+                ]
+            }
+        ]
+    }
+]
+"#
+    );
 
-//     // Check v1/v2/v3 use the same structure (this won't compile if not)
+    // Check round-trip seriliaze/deserialize
 
-//     assert_eq!(
-//         protocol::v1::ping::Req {
-//             ping: "foo".to_owned()
-//         },
-//         protocol::v2::ping::Req {
-//             ping: "foo".to_owned()
-//         }
-//     );
-//     assert_eq!(
-//         protocol::v1::ping::Req {
-//             ping: "foo".to_owned()
-//         },
-//         protocol::v3::ping::Req {
-//             ping: "foo".to_owned()
-//         }
-//     );
-
-//     // Check round-trip seriliaze/deserialize
-
-//     let req = protocol::v2::ping::Req {
-//         ping: "foo".to_owned(),
-//     };
-//     let dumped = req.clone().dump().unwrap();
-//     assert_eq!(
-//         protocol::v2::AnyCmdReq::load(&dumped).unwrap(),
-//         protocol::v2::AnyCmdReq::Ping(req)
-//     );
-
-//     let rep = protocol::v2::ping::Rep::Ok {
-//         pong: "foo".to_owned(),
-//     };
-//     let dumped = rep.clone().dump().unwrap();
-//     assert_eq!(
-//         protocol::v2::ping::Rep::load(&dumped).unwrap(),
-//         protocol::v2::ping::Rep::Ok {
-//             pong: "foo".to_owned()
-//         }
-//     );
-// }
+    let req = protocol::v1::ping::Req {
+        e: protocol::v1::ping::EnumNestedType::E1 { f: 42 },
+        s: protocol::v1::ping::StructNestedType { f: 42 },
+    };
+    let dumped = req.clone().dump().unwrap();
+    assert_eq!(
+        protocol::v1::AnyCmdReq::load(dumped).unwrap(),
+        protocol::v1::AnyCmdReq::Ping(req)
+    );
+}

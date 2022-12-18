@@ -5,7 +5,7 @@ use miniserde::Deserialize;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
-use std::{cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::old_parser::utils::inspect_type;
 
@@ -157,6 +157,8 @@ pub(crate) struct GenCmdField {
     // Field is required if the command has always contain it, or if
     // it has been introduced in a previous major version of the API
     pub added_in_minor_revision: bool,
+    // Expose what has been provided in `other_fields`
+    pub allowed_extra_types: Rc<RefCell<HashMap<String, String>>>,
 }
 
 pub(crate) struct GenCmdNestedTypeVariant {
@@ -210,6 +212,9 @@ impl GenCmdsFamilly {
             for major_version in cmd.major_versions {
                 // Now it's time to convert the Json struct into a Gen one !
 
+                // This will be populated once we have parsed `nested_types` field
+                let allowed_extra_types = Rc::new(RefCell::new(HashMap::new()));
+
                 let convert_field = |field: &JsonCmdField| {
                     // Field can be omited in a schema if it has been added in a minor
                     // version revision (e.g. field added in APIv1.1, we must allow it
@@ -235,27 +240,9 @@ impl GenCmdsFamilly {
                         name: field.name.clone(),
                         ty: field.ty.clone(),
                         added_in_minor_revision: added_in_minor_revision,
+                        allowed_extra_types: allowed_extra_types.clone(),
                     })
                 };
-
-                let gen_req = GenCmdReq {
-                    _cmd: cmd.req.cmd.to_owned(),
-                    other_fields: cmd
-                        .req
-                        .other_fields
-                        .iter()
-                        .filter_map(&convert_field)
-                        .collect(),
-                };
-
-                let gen_reps = cmd
-                    .reps
-                    .iter()
-                    .map(|rep| GenCmdRep {
-                        status: rep.status.to_owned(),
-                        other_fields: rep.other_fields.iter().filter_map(&convert_field).collect(),
-                    })
-                    .collect();
 
                 let gen_nested_types = {
                     if let Some(ref nested_types) = cmd.nested_types {
@@ -307,6 +294,37 @@ impl GenCmdsFamilly {
                         vec![]
                     }
                 };
+
+                // Told you we were going to populate `allowed_extra_types` !
+                {
+                    let mut allowed_extra_types = allowed_extra_types.borrow_mut();
+                    for nested_type in gen_nested_types.iter() {
+                        let name = match nested_type {
+                            GenCmdNestedType::Enum { name, .. } => name,
+                            GenCmdNestedType::Struct { name, .. } => name,
+                        };
+                        allowed_extra_types.insert(name.to_owned(), name.to_owned());
+                    }
+                }
+
+                let gen_req = GenCmdReq {
+                    _cmd: cmd.req.cmd.to_owned(),
+                    other_fields: cmd
+                        .req
+                        .other_fields
+                        .iter()
+                        .filter_map(&convert_field)
+                        .collect(),
+                };
+
+                let gen_reps = cmd
+                    .reps
+                    .iter()
+                    .map(|rep| GenCmdRep {
+                        status: rep.status.to_owned(),
+                        other_fields: rep.other_fields.iter().filter_map(&convert_field).collect(),
+                    })
+                    .collect();
 
                 let gen_cmd = match (
                     *has_introduced_in_field.borrow(),
@@ -585,7 +603,8 @@ fn quote_cmd_field(field: &GenCmdField, with_pub: bool) -> TokenStream {
     let mut attrs = Vec::<TokenStream>::new();
 
     let ty: syn::Type = syn::parse_str({
-        let ty = inspect_type(&field.ty, &HashMap::new());
+        let allowed_extra_types = field.allowed_extra_types.borrow();
+        let ty = inspect_type(&field.ty, &*allowed_extra_types);
         if field.added_in_minor_revision {
             attrs.push(quote! {
                 #[serde(default, skip_serializing_if = "::libparsec_types::Maybe::is_absent")]
