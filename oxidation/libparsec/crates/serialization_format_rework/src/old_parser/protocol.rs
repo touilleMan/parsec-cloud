@@ -68,13 +68,39 @@ pub(crate) struct JsonCmdFlavour {
     major_versions: Vec<u32>,
     req: JsonCmdReq,
     reps: Vec<JsonCmdRep>,
+    nested_types: Option<Vec<JsonNestedType>>,
+}
+
+#[derive(Deserialize)]
+pub(crate) enum JsonNestedTypeKind {
+    #[serde(rename = "enum")]
+    Enum,
+    #[serde(rename = "struct")]
+    Struct,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct JsonNestedTypeVariant {
+    name: String,
+    discriminant_value: String,
+    fields: Vec<JsonCmdField>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct JsonNestedType {
+    name: String,
+    #[serde(rename = "type")]
+    ty: JsonNestedTypeKind,
+    variants: Option<Vec<JsonNestedTypeVariant>>,
+    fields: Option<Vec<JsonCmdField>>,
 }
 
 #[derive(Deserialize)]
 pub(crate) struct JsonCmdReq {
     cmd: String,
     other_fields: Vec<JsonCmdField>,
-    unit: Option<String>,
+    // other_fields: Option<Vec<JsonCmdField>>,
+    // unit: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -107,6 +133,7 @@ pub(crate) enum GenCmdSpec {
     Original {
         req: GenCmdReq,
         reps: Vec<GenCmdRep>,
+        nested_types: Vec<GenCmdNestedType>,
     },
     ReusedFromVersion {
         version: u32,
@@ -130,6 +157,23 @@ pub(crate) struct GenCmdField {
     // Field is required if the command has always contain it, or if
     // it has been introduced in a previous major version of the API
     pub added_in_minor_revision: bool,
+}
+
+pub(crate) struct GenCmdNestedTypeVariant {
+    pub name: String,
+    pub discriminant_value: String,
+    pub fields: Vec<GenCmdField>,
+}
+
+pub(crate) enum GenCmdNestedType {
+    Enum {
+        name: String,
+        variants: Vec<GenCmdNestedTypeVariant>,
+    },
+    Struct {
+        name: String,
+        fields: Vec<GenCmdField>,
+    },
 }
 
 pub(crate) struct GenCmdsFamilly {
@@ -213,6 +257,57 @@ impl GenCmdsFamilly {
                     })
                     .collect();
 
+                let gen_nested_types = {
+                    if let Some(ref nested_types) = cmd.nested_types {
+                        nested_types.iter().map(|nested_type| {
+                            match nested_type.ty {
+                                JsonNestedTypeKind::Enum => {
+                                    match (&nested_type.fields, &nested_type.variants) {
+                                        (None, Some(variants)) => {
+                                            GenCmdNestedType::Enum {
+                                                name: nested_type.name.to_owned(),
+                                                variants: variants.iter().map(
+                                                    |variant| {
+                                                        GenCmdNestedTypeVariant {
+                                                            name: variant.name.to_owned(),
+                                                            discriminant_value: variant.discriminant_value.to_owned(),
+                                                            fields: variant.fields
+                                                                .iter()
+                                                                .filter_map(&convert_field)
+                                                                .collect(),
+                                                        }
+                                                    }
+                                                ).collect()
+                                            }
+                                        },
+                                        _ => {
+                                            panic!("{:?}::{:?}: Enum nested type requires `variants` field and should not have `fields` field", &cmd.req.cmd, &nested_type.name);
+                                        },
+                                    }
+                                },
+                                JsonNestedTypeKind::Struct => {
+                                    match (&nested_type.fields, &nested_type.variants) {
+                                        (Some(fields), None) => {
+                                            GenCmdNestedType::Struct {
+                                                name: nested_type.name.to_owned(),
+                                                fields: fields
+                                                    .iter()
+                                                    .filter_map(&convert_field)
+                                                    .collect(),
+                                            }
+                                        },
+                                        _ => {
+                                            panic!("{:?}::{:?}: Struct nested type requires `fields` field and should not have `variants` field", &cmd.req.cmd, &nested_type.name);
+                                        },
+                                    }
+                                },
+                            }
+                        }).collect()
+                    } else {
+                        vec![]
+                    }
+                };
+
                 let gen_cmd = match (
                     *has_introduced_in_field.borrow(),
                     can_reuse_schema_from_version,
@@ -225,6 +320,7 @@ impl GenCmdsFamilly {
                             spec: GenCmdSpec::Original {
                                 req: gen_req,
                                 reps: gen_reps,
+                                nested_types: gen_nested_types,
                             },
                         }
                     }
@@ -236,6 +332,7 @@ impl GenCmdsFamilly {
                             spec: GenCmdSpec::Original {
                                 req: gen_req,
                                 reps: gen_reps,
+                                nested_types: gen_nested_types,
                             },
                         }
                     }
@@ -269,12 +366,6 @@ impl GenCmdsFamilly {
 impl GenCmdsFamilly {
     pub(crate) fn quote(&self) -> TokenStream {
         let familly_name = format_ident!("{}", &self.name);
-
-        // let versioned_cmds: Vec<syn::ItemMod> = self.versions
-        //     .iter()
-        //     .sorted_by_key(|(v, _)| *v)
-        //     .map(|(version, cmds)| quote_versioned_cmds(*version, cmds))
-        //     .collect();
 
         let versioned_cmds: Vec<TokenStream> = self
             .versions
@@ -351,7 +442,7 @@ impl GenCmd {
                 }
             }
 
-            GenCmdSpec::Original { req, reps } => {
+            GenCmdSpec::Original { req, reps, .. } => {
                 let struct_req = quote_cmd_req_struct(req);
                 let variants_rep = quote_cmd_rep_variants(reps);
                 // TODO: support nested types !

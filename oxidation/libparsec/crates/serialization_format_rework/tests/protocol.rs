@@ -262,3 +262,63 @@ fn test_introduce_in_field() {
     assert!(protocol::v3::ping2::Rep::load(&v1_dumped).is_err());
     assert_eq!(protocol::v3::ping2::Rep::load(&v2_with_dumped).unwrap(), v3);
 }
+
+// #[test]
+// fn test_unit() {
+//     generate_protocol_familly_from_contents!(
+//         r#"[
+//     {
+//         "major_versions": [1],
+//         "req": {
+//             "cmd": "ping",
+//             "unit": "Foo",
+//             "other_fields": []
+//         },
+//         "reps": [],
+//         "":
+//     }
+// ]
+// "#
+//     );
+
+//     // Check v1/v2/v3 use the same structure (this won't compile if not)
+
+//     assert_eq!(
+//         protocol::v1::ping::Req {
+//             ping: "foo".to_owned()
+//         },
+//         protocol::v2::ping::Req {
+//             ping: "foo".to_owned()
+//         }
+//     );
+//     assert_eq!(
+//         protocol::v1::ping::Req {
+//             ping: "foo".to_owned()
+//         },
+//         protocol::v3::ping::Req {
+//             ping: "foo".to_owned()
+//         }
+//     );
+
+//     // Check round-trip seriliaze/deserialize
+
+//     let req = protocol::v2::ping::Req {
+//         ping: "foo".to_owned(),
+//     };
+//     let dumped = req.clone().dump().unwrap();
+//     assert_eq!(
+//         protocol::v2::AnyCmdReq::load(&dumped).unwrap(),
+//         protocol::v2::AnyCmdReq::Ping(req)
+//     );
+
+//     let rep = protocol::v2::ping::Rep::Ok {
+//         pong: "foo".to_owned(),
+//     };
+//     let dumped = rep.clone().dump().unwrap();
+//     assert_eq!(
+//         protocol::v2::ping::Rep::load(&dumped).unwrap(),
+//         protocol::v2::ping::Rep::Ok {
+//             pong: "foo".to_owned()
+//         }
+//     );
+// }
